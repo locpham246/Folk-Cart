@@ -10,7 +10,9 @@ export const createStoreProduct = async (req, res) => {
         if (!productId || !storeId || price === undefined || stock === undefined) {
             return res.status(400).json({ success: false, message: 'Missing required fields for StoreProduct.' });
         }
-
+        if (!mongoose.Types.ObjectId.isValid(productId) || !mongoose.Types.ObjectId.isValid(storeId)) {
+            return res.status(400).json({ success: false, message: 'Invalid format for Product ID or Store ID.' });
+        }
         const productExists = await ProductModel.findById(productId);
         const storeExists = await Store.findById(storeId);
 
@@ -45,6 +47,9 @@ export const createStoreProduct = async (req, res) => {
         if (error.code === 11000 && error.keyPattern && error.keyPattern.productId && error.keyPattern.storeId) {
             return res.status(409).json({ success: false, message: 'This product already exists in this store.' });
         }
+        if (error.name === 'CastError') {
+             return res.status(400).json({ success: false, message: 'Invalid ID format in request body.' });
+        }
         res.status(500).json({ success: false, message: error.message || 'An error occurred while creating the store product.' });
     }
 };
@@ -58,7 +63,6 @@ export const getStoreProducts = async (req, res) => {
         console.log("Received query parameters:", req.query);
 
         if (storeId) {
-
             if (!mongoose.Types.ObjectId.isValid(storeId)) {
                 console.error("Invalid storeId received:", storeId);
                 return res.status(400).json({ success: false, message: 'Invalid Store ID format.' });
@@ -67,9 +71,6 @@ export const getStoreProducts = async (req, res) => {
             console.log("Parsed storeId for query:", query.storeId);
         } else {
             console.log("No storeId provided in query. Fetching all available store products.");
-
-
-
         }
 
         if (recommended === 'true') {
@@ -83,13 +84,10 @@ export const getStoreProducts = async (req, res) => {
 
         let aggregatePipeline = [];
 
-
         if (Object.keys(query).length > 0) {
             aggregatePipeline.push({ $match: query });
             console.log("$match after initial query:", aggregatePipeline[0]);
         }
-
-
         aggregatePipeline.push({
             $lookup: {
                 from: 'products',
@@ -98,10 +96,6 @@ export const getStoreProducts = async (req, res) => {
                 as: 'productDetails'
             }
         });
-
-
-
-
         aggregatePipeline.push({ $unwind: '$productDetails' });
 
         aggregatePipeline.push({
@@ -138,8 +132,6 @@ export const getStoreProducts = async (req, res) => {
                 recommended: 1,
                 discount: 1,
                 storeSpecificImages: 1,
-
-
                 productId: '$productDetails',
                 storeId: '$storeDetails',
                 createdAt: 1,
@@ -165,13 +157,17 @@ export const getStoreProducts = async (req, res) => {
 };
 
 export const getStoreProductById = async (req, res) => {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, message: 'Invalid Store Product ID format.' });
+    }
+
     try {
-        const storeProduct = await StoreProduct.findById(req.params.id)
-            .populate('productId')
-            .populate('storeId');
+        const storeProduct = await StoreProduct.findById(id).populate('productId').populate('storeId');
 
         if (!storeProduct) {
-            console.log("Cannot find Store Product with ID:", req.params.id, "in DB.");
+            console.log("Cannot find Store Product with ID:", id, "in DB.");
             return res.status(404).json({ success: false, message: 'Store Product not found.' });
         }
         console.log("Found Store Product:", storeProduct._id);
@@ -183,9 +179,14 @@ export const getStoreProductById = async (req, res) => {
 };
 
 export const updateStoreProduct = async (req, res) => {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, message: 'Invalid Store Product ID format.' });
+    }
+    
     try {
         const updatedStoreProduct = await StoreProduct.findByIdAndUpdate(
-            req.params.id,
+            id,
             req.body,
             { new: true, runValidators: true }
         )
@@ -203,8 +204,13 @@ export const updateStoreProduct = async (req, res) => {
 };
 
 export const deleteStoreProduct = async (req, res) => {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, message: 'Invalid Store Product ID format.' });
+    }
+    
     try {
-        const deletedStoreProduct = await StoreProduct.findByIdAndDelete(req.params.id);
+        const deletedStoreProduct = await StoreProduct.findByIdAndDelete(id);
         if (!deletedStoreProduct) {
             return res.status(404).json({ success: false, message: 'Store Product not found.' });
         }
@@ -280,12 +286,14 @@ export const getProductSearchSummary = async (req, res) => {
 
 export const getStoreOptionsForProduct = async (req, res) => {
     console.log("Attempting to fetch store options for productId:", req.params.productId);
-    try {
-        const { productId } = req.params;
+    const { productId } = req.params;
 
-        if (!productId) {
-            return res.status(400).json({ success: false, message: 'Product ID is required.' });
-        }
+    if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
+        return res.status(400).json({ success: false, message: 'Valid Product ID is required.' });
+    }
+    
+    try {
+        
 
         const storeProducts = await StoreProduct.find({ productId: productId })
             .populate('productId')
